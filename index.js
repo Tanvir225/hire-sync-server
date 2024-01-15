@@ -6,6 +6,7 @@ const { MongoClient, ServerApiVersion } = require('mongodb');
 
 //middleware
 app.use(cors())
+app.use(express.json())
 
 //test api
 app.get("/",async(req,res)=>{
@@ -44,17 +45,33 @@ async function run() {
     })
 
     //jobs api endpoint -> v1
+    //usage this-api -> /api/v1/jobs?email="t@gmail.com" - case-1
     app.get("/api/v1/jobs",async(req,res)=>{
 
+      //get queryEmail
+      const {email} = req.query
+      let result;
+
+      //filter by email
+      if (email) {
+        result = await jobs.find({email : email}).toArray()
+      }
+      else{
+        result = await jobs.find().toArray()
+      }
+        
+        res.send(result)
     })
 
     // jobs post api endpoint -> v1
     app.post("/api/v1/jobs",async(req,res)=>{
         const job = req.body
-        console.log('hitted',job);
+        console.log(job);
+        const result = await jobs.insertOne(job)
+        res.send(result)
     })
 
-
+    
 
 
 
