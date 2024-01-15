@@ -2,7 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const app = express()
 const port = 5000
-const { MongoClient, ServerApiVersion } = require('mongodb');
+const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 
 //middleware
 app.use(cors())
@@ -50,15 +50,27 @@ async function run() {
 
       //get queryEmail
       const {email} = req.query
-      let result;
+      const {search} = req.query
+      //queryObj
+      const queryObj = {}
 
-      //filter by email
       if (email) {
-        result = await jobs.find({email : email}).toArray()
+        queryObj.email = email
       }
-      else{
-        result = await jobs.find().toArray()
+      if (search) {
+        queryObj.title = {$regex :search , $options : 'i'}
       }
+      //console.log(queryObj);
+      
+      const result = await jobs.find(queryObj).toArray()
+
+      // //filter by email
+      // if (email) {
+      //   result = await jobs.find({email : email}).toArray()
+      // }
+      // else{
+      //   result = await jobs.find().toArray()
+      // }
         
         res.send(result)
     })
@@ -69,6 +81,21 @@ async function run() {
         console.log(job);
         const result = await jobs.insertOne(job)
         res.send(result)
+    })
+
+    //job update api endpoint -> v1
+    app.patch("/api/v1/jobs/update/:id",async(req,res)=>{
+      const id = req.params.id
+      const job = req.body
+      console.log(id,job);
+    })
+
+    // job delete api endpoint -> v1
+    app.delete("/api/v1/jobs/delete/:id",async(req,res)=>{
+      const id = req.params.id
+      //console.log(id);
+      const result = await jobs.deleteOne({_id : new ObjectId(id)})
+      res.send(result)
     })
 
     
