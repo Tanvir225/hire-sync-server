@@ -69,16 +69,20 @@ async function run() {
     })
 
     //exclude job by user email
-    //usage this-api -> /api/v1/jobs/exclude?email="t@gmail.com- case-1
-    //usage this-api -> /api/v1/jobs - case-2
+    //usage this-api -> /api/v1/jobs/exclude?email="t@gmail.com&search=""- case-1
+    //usage this-api -> /api/v1/jobs/exclude - case-2
     app.get("/api/v1/jobs/exclude",async(req,res)=>{
       const {email} = req.query
-     
+      const {search} = req.query 
       //jobObj
       let jobObj = {}
       //get all the jobs from db and filter out the ones is not match with the given email
       if (email) {
         jobObj['email'] = {$ne:email}
+      }
+
+      if (search) {
+        jobObj.title = {$regex :search , $options : 'i'}
       }
 
       console.log(jobObj);
