@@ -45,7 +45,8 @@ async function run() {
     })
 
     //jobs api endpoint -> v1
-    //usage this-api -> /api/v1/jobs?email="t@gmail.com" - case-1
+    //usage this-api -> /api/v1/jobs?email="t@gmail.com &search="title" - case-1
+    //usage this-api -> /api/v1/jobs - case-2
     app.get("/api/v1/jobs",async(req,res)=>{
 
       //get queryEmail
@@ -64,15 +65,33 @@ async function run() {
       
       const result = await jobs.find(queryObj).toArray()
 
-      // //filter by email
-      // if (email) {
-      //   result = await jobs.find({email : email}).toArray()
-      // }
-      // else{
-      //   result = await jobs.find().toArray()
-      // }
-        
         res.send(result)
+    })
+
+    //exclude job by user email
+    //usage this-api -> /api/v1/jobs/exclude?email="t@gmail.com- case-1
+    //usage this-api -> /api/v1/jobs - case-2
+    app.get("/api/v1/jobs/exclude",async(req,res)=>{
+      const {email} = req.query
+     
+      //jobObj
+      let jobObj = {}
+      //get all the jobs from db and filter out the ones is not match with the given email
+      if (email) {
+        jobObj['email'] = {$ne:email}
+      }
+
+      console.log(jobObj);
+      const result = await jobs.find(jobObj).toArray()
+      res.send(result)
+    })
+
+
+    //single job api endpoint -> v1
+    app.get('/api/v1/jobs/:id', async (req, res)=>{
+      const id= req.params.id;
+      const result = await jobs.findOne({_id : new ObjectId(id)})
+      res.send(result)
     })
 
     // jobs post api endpoint -> v1
@@ -87,7 +106,20 @@ async function run() {
     app.patch("/api/v1/jobs/update/:id",async(req,res)=>{
       const id = req.params.id
       const job = req.body
-      console.log(id,job);
+      //console.log(job);
+      //filter
+      const filter = {_id : new ObjectId(id)}
+      
+      //updatedJob
+      const updatedJob = {
+        $set: job
+      }
+
+      //options
+      const options = {upsert:true}
+
+      const result = await jobs.updateOne(filter,updatedJob,options)
+      res.send(result)
     })
 
     // job delete api endpoint -> v1
