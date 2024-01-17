@@ -98,8 +98,27 @@ async function run() {
     });
 
     //apply jobs api endpoint -> v1
+     //usage this-api -> /api/v1/apply?email="t@gmail.com&search=""&category=""- case-1
+    //usage this-api -> /api/v1/apply - case-2
+
     app.get("/api/v1/apply", async (req, res) => {
-      const result = await appliedJob.find().toArray();
+      //get queryEmail
+      const { email } = req.query;
+      const { search } = req.query;
+      const { category } = req.query;
+      //queryObj
+      const queryObj = {};
+
+      if (email) {
+        queryObj.userEmail = email;
+      }
+      if (search) {
+        queryObj.position = { $regex: search, $options: "i" };
+      }
+      if (category) {
+        queryObj.category = category
+      }
+      const result = await appliedJob.find(queryObj).toArray();
       res.send(result);
     });
 
@@ -113,6 +132,8 @@ async function run() {
 
     //apply post api endpoint ->
     app.post("/api/v1/apply", async (req, res) => {
+
+      let result
       const {
         userName,
         userEmail,
@@ -125,13 +146,9 @@ async function run() {
       } = req.body;
 
       //console.log(id, userEmail);
-      //check if the deadline is over
-      const job = await jobs.findOne({ _id: new ObjectId(id) });
-      //console.log(job.email);
 
-      //check for user apply or not
-      const userApplied = await appliedJob.findOne({_id: new ObjectId(id)})
-      console.log(userApplied);
+      const job = await jobs.findOne({ _id: new ObjectId(id) });
+
 
       // Check if the user who posted the job is trying to apply
       if (job.email === userEmail) {
@@ -145,22 +162,30 @@ async function run() {
         return res.send({ error: "Apply deadline is over!" });
       }
 
-      //Check if the user has already applied for the job
-      if (job.email.includes(userEmail)) {
-        //console.log("you alreder apply this job");
-        return res.send({ error: "You have already applied!" });
+
+
+      //check for user apply or not
+      const userApplied = await appliedJob.findOne({ id: id })
+      console.log(userApplied);
+
+      if (userApplied?.userEmail.includes(userEmail)) {
+        return res.send({ error: "you have already applied" })
       }
+
+      //save apply 
+      result = await appliedJob.insertOne(req.body)
+
 
       //process job application
       // Save the updated job document
-      const result = await jobs.updateOne(
+      result = await jobs.updateOne(
         { _id: new ObjectId(id) },
-        {$inc: { applicantNumber: 1 } }
+        { $inc: { applicantNumber: 1 } }
       );
 
-      res.send({ success: "Application successful", result });
+      return res.send({ success: "Application successful", result });
 
-  
+
     });
 
     //job update api endpoint -> v1
