@@ -1,12 +1,50 @@
 const express = require("express");
 const cors = require("cors");
+const jwt = require("jsonwebtoken");
+const cookieParser = require("cookie-parser");
 const app = express();
 const port = 5000;
+//dot env
+require("dotenv").config();
+
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 
 //middleware
-app.use(cors());
+app.use(
+  cors({
+    origin: ["http://localhost:5173"],
+    credentials: true,
+  })
+);
 app.use(express.json());
+app.use(cookieParser());
+
+//custom middleware
+const logger = async (req, res, next) => {
+  console.log(`Request made to ${req.method} at ${req.url}`);
+  next();
+};
+
+//verify token
+const verfyToken = async (req, res, next) => {
+  //get token from cookie
+  const token = req?.cookies?.token;
+
+  if (!token) {
+    return res.status(401).send({ status: "unauthorised" });
+  }
+
+  if (token) {
+    jwt.verify(token, process.env.ACCESS_TOKEN, (err, decoded) => {
+      if (err) {
+        return res.status(403).send({ status: "forbidden" });
+      }
+
+      req.user = decoded;
+      next();
+    });
+  }
+};
 
 //test api
 app.get("/", async (req, res) => {
@@ -39,6 +77,24 @@ async function run() {
     const categories = database.collection("categories");
     const appliedJob = database.collection("appliedJob");
 
+    //jwt auth related api -> v1
+    app.post("/api/v1/jwt", async (req, res) => {
+      //user from body
+      const user = req.body;
+      //console.log(user);
+      //token generate
+      const token = jwt.sign(user, process.env.ACCESS_TOKEN, {
+        expiresIn: "1h",
+      });
+
+      res
+        .cookie("token", token, {
+          httpOnly: true,
+          secure: false,
+        })
+        .send({ status: true });
+    });
+
     //category api endpoint -> v1
     app.get("/api/v1/category", async (req, res) => {
       const result = await categories.find().toArray();
@@ -48,7 +104,11 @@ async function run() {
     //jobs api endpoint -> v1
     //usage this-api -> /api/v1/jobs?email="t@gmail.com &search="title" - case-1
     //usage this-api -> /api/v1/jobs - case-2
-    app.get("/api/v1/jobs", async (req, res) => {
+
+    app.get("/api/v1/jobs", logger, verfyToken, async (req, res) => {
+      //get user from cookie
+      const user = req?.user;
+
       //get queryEmail
       const { email } = req.query;
       const { search } = req.query;
@@ -56,24 +116,77 @@ async function run() {
       const queryObj = {};
 
       if (email) {
-        queryObj.email = email;
+        if (user?.email === email) {
+          console.log("match");
+          queryObj.email = email;
+        }
+      } else {
+        return res.send({ status: "unauthorized" });
       }
+
       if (search) {
         queryObj.title = { $regex: search, $options: "i" };
       }
+
       //console.log(queryObj);
 
       const result = await jobs.find(queryObj).toArray();
 
+      return res.send(result);
+    });
+
+    //jobCountfor pagination api endpoint
+    app.get("/api/v1/jobsCount", async (req, res) => {
+      const count = await jobs.estimatedDocumentCount();
+      res.send({ count });
+    });
+
+    //countdown
+    app.get("/api/v1/countDown",async(req,res)=>{
+      const jobCount = await jobs.estimatedDocumentCount()
+      const applyCount = await appliedJob.estimatedDocumentCount()
+      const categoryCount = await categories.estimatedDocumentCount()
+
+      return res.send({jobCount,applyCount,categoryCount})
+    })
+
+    //exclude job by user-email
+    //usage this-api -> /api/v1/jobs/exclude/home?email="t@gmail.com&category&page-
+    app.get("/api/v1/jobs/exclude/home", async (req, res) => {
+      const { email } = req.query;
+      const { category } = req.query;
+
+      //jobObj
+      let jobObj = {};
+      //get all the jobs from db and filter out the ones is not match with the given email
+      if (email) {
+        jobObj["email"] = { $ne: email };
+      }
+
+      if (category) {
+        jobObj.category = category;
+      }
+
+      const result = await jobs
+        .find(jobObj)
+        .limit(6)
+        .toArray();
       res.send(result);
+
     });
 
     //exclude job by user email
-    //usage this-api -> /api/v1/jobs/exclude?email="t@gmail.com&search=""- case-1
+    //usage this-api -> /api/v1/jobs/exclude?email="t@gmail.com&search=""&category&page&size- case-1
     //usage this-api -> /api/v1/jobs/exclude - case-2
+
     app.get("/api/v1/jobs/exclude", async (req, res) => {
       const { email } = req.query;
       const { search } = req.query;
+      const { category } = req.query;
+      const page = parseInt(req.query.page);
+      const size = parseInt(req.query.size);
+
+      console.log(page, size);
       //jobObj
       let jobObj = {};
       //get all the jobs from db and filter out the ones is not match with the given email
@@ -85,8 +198,16 @@ async function run() {
         jobObj.title = { $regex: search, $options: "i" };
       }
 
+      if (category) {
+        jobObj.category = category;
+      }
+
       console.log(jobObj);
-      const result = await jobs.find(jobObj).toArray();
+      const result = await jobs
+        .find(jobObj)
+        .skip(page * size)
+        .limit(size)
+        .toArray();
       res.send(result);
     });
 
@@ -98,10 +219,16 @@ async function run() {
     });
 
     //apply jobs api endpoint -> v1
-     //usage this-api -> /api/v1/apply?email="t@gmail.com&search=""&category=""- case-1
+    //usage this-api -> /api/v1/apply?email="t@gmail.com&search=""&category=""- case-1
     //usage this-api -> /api/v1/apply - case-2
 
-    app.get("/api/v1/apply", async (req, res) => {
+    app.get("/api/v1/apply", logger, verfyToken, async (req, res) => {
+      //get user from cookie
+      const user = req?.user;
+
+      //let result
+      let result;
+
       //get queryEmail
       const { email } = req.query;
       const { search } = req.query;
@@ -110,16 +237,24 @@ async function run() {
       const queryObj = {};
 
       if (email) {
-        queryObj.userEmail = email;
+        if (user?.email === email) {
+          if (email) {
+            queryObj.userEmail = email;
+          }
+        }
+      } else {
+        return res.send({ status: "unauthorised" });
       }
+
       if (search) {
         queryObj.position = { $regex: search, $options: "i" };
       }
       if (category) {
-        queryObj.category = category
+        queryObj.category = category;
       }
-      const result = await appliedJob.find(queryObj).toArray();
-      res.send(result);
+
+      result = await appliedJob.find(queryObj).toArray();
+      return res.send(result);
     });
 
     // jobs post api endpoint -> v1
@@ -132,8 +267,7 @@ async function run() {
 
     //apply post api endpoint ->
     app.post("/api/v1/apply", async (req, res) => {
-
-      let result
+      let result;
       const {
         userName,
         userEmail,
@@ -149,7 +283,6 @@ async function run() {
 
       const job = await jobs.findOne({ _id: new ObjectId(id) });
 
-
       // Check if the user who posted the job is trying to apply
       if (job.email === userEmail) {
         //console.log("you can't apply");
@@ -162,19 +295,16 @@ async function run() {
         return res.send({ error: "Apply deadline is over!" });
       }
 
-
-
       //check for user apply or not
-      const userApplied = await appliedJob.findOne({ id: id })
+      const userApplied = await appliedJob.findOne({ id: id });
       console.log(userApplied);
 
       if (userApplied?.userEmail.includes(userEmail)) {
-        return res.send({ error: "you have already applied" })
+        return res.send({ error: "you have already applied" });
       }
 
-      //save apply 
-      result = await appliedJob.insertOne(req.body)
-
+      //save apply
+      result = await appliedJob.insertOne(req.body);
 
       //process job application
       // Save the updated job document
@@ -184,8 +314,6 @@ async function run() {
       );
 
       return res.send({ success: "Application successful", result });
-
-
     });
 
     //job update api endpoint -> v1
