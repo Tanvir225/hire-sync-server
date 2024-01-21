@@ -12,7 +12,7 @@ const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 //middleware
 app.use(
   cors({
-    origin: ["http://localhost:5173"],
+    origin: ["http://localhost:5173","https://hire-sync-96ea5.web.app","https://hire-sync-96ea5.firebaseapp.com"],
     credentials: true,
   })
 );
@@ -29,7 +29,7 @@ const logger = async (req, res, next) => {
 const verfyToken = async (req, res, next) => {
   //get token from cookie
   const token = req?.cookies?.token;
-
+  console.log(token);
   if (!token) {
     return res.status(401).send({ status: "unauthorised" });
   }
@@ -55,7 +55,7 @@ app.get("/", async (req, res) => {
 //pass -> d80nrh2xWJTpkkCJ
 
 const uri =
-  "mongodb+srv://hire-sync:d80nrh2xWJTpkkCJ@cluster0.ljq2tzl.mongodb.net/?retryWrites=true&w=majority";
+  `mongodb+srv://${process.env.USER_DB}:${process.env.USER_PASS}@cluster0.ljq2tzl.mongodb.net/?retryWrites=true&w=majority`;
 
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
 const client = new MongoClient(uri, {
@@ -69,7 +69,7 @@ const client = new MongoClient(uri, {
 async function run() {
   try {
     // Connect the client to the server	(optional starting in v4.7)
-    await client.connect();
+   // await client.connect();
 
     //connect to databse
     const database = client.db("hiresyncDB");
@@ -90,7 +90,8 @@ async function run() {
       res
         .cookie("token", token, {
           httpOnly: true,
-          secure: false,
+          secure: true,
+          sameSite:'none'
         })
         .send({ status: true });
     });
@@ -186,7 +187,7 @@ async function run() {
       const page = parseInt(req.query.page);
       const size = parseInt(req.query.size);
 
-      console.log(page, size);
+     // console.log(page, size);
       //jobObj
       let jobObj = {};
       //get all the jobs from db and filter out the ones is not match with the given email
@@ -202,7 +203,7 @@ async function run() {
         jobObj.category = category;
       }
 
-      console.log(jobObj);
+     // console.log(jobObj);
       const result = await jobs
         .find(jobObj)
         .skip(page * size)
@@ -345,10 +346,10 @@ async function run() {
     });
 
     // Send a ping to confirm a successful connection
-    await client.db("admin").command({ ping: 1 });
-    console.log(
-      "Pinged your deployment. You successfully connected to MongoDB!"
-    );
+    // await client.db("admin").command({ ping: 1 });
+    // console.log(
+    //   "Pinged your deployment. You successfully connected to MongoDB!"
+    // );
   } finally {
     // Ensures that the client will close when you finish/error
     //await client.close();
